@@ -1,3 +1,4 @@
 ultralytics
 easyocr
 tensorflow
+python-multipart

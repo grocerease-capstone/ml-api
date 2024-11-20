@@ -1,9 +1,23 @@
-from fastapi import FastAPI, responses
-from ml.product_classification import predict_classification, standardize_product_name
+import io
+import os.path
+from typing import List
+
+import easyocr
+import numpy as np
+from PIL import Image
+from fastapi import FastAPI, responses, UploadFile
+from pydantic import BaseModel
+from ultralytics import YOLO
+
+from ml.product_classification import predict_classification
 from models.classification import PredictRequest
 
-
 app = FastAPI()
+
+ml_models_dir = os.path.join('ml_models')
+
+product_detection_model = YOLO(os.path.join(ml_models_dir, 'object_detection', 'model.pt'))
+ocr = easyocr.Reader(['en', 'id'])
 
 
 @app.get("/")
@@ -30,3 +44,66 @@ async def root():
 @app.post("/predict")
 async def handle_post_predict(request: PredictRequest):
     return predict_classification(request.product_names)
+
+
+@app.post("/receipt")
+async def handle_receipt_detection(file: UploadFile):
+    image_content = await file.read()
+    receipt = Image.open(io.BytesIO(image_content))
+
+    results = product_detection_model.predict(source=receipt)
+
+    class ProductItem(BaseModel):
+        name: str
+        price: str
+        amount: int
+
+    products: List[ProductItem] = list[ProductItem]()
+
+    for result in results:
+        # result.show()
+
+        boxes = result.boxes.xyxy.cpu().numpy()
+        labels = result.boxes.cls.cpu().numpy()
+
+        for idx, (box, label) in enumerate(zip(boxes, labels)):
+            tolerance = 10
+            x1, y1, x2, y2 = box.astype(int)
+
+            cropped_image = receipt.crop((
+                x1 - tolerance,
+                y1 - tolerance,
+                x2 + tolerance,
+                y2 + tolerance,
+            ))
+
+            # cropped_image.show()
+
+            np_cropped_image = np.array(cropped_image)
+            ocr_results = ocr.readtext(np_cropped_image, detail=0)
+
+            ocr_result = [text for text in ocr_results if len(text) > 0]
+            ocr_result_text: str = ' '.join(ocr_result)
+
+            products.append(
+                ProductItem(
+                    name=ocr_result_text,
+                    price="dummy",
+                    amount=10,
+                )
+            )
+
+            #
+            # for ocr_result in ocr_results:
+            #     bounding_box, text, confidence = ocr_result
+            #
+            #     x1, y1 = map(int, bounding_box[0])
+            #     x2, y2 = map(int, bounding_box[2])
+            #
+            #     result_with_ocr = ImageDraw.Draw(cropped_image)
+            #     result_with_ocr.rectangle([x1, y1, x2, y2], outline='red', width=2)
+            #     result_with_ocr.text((x1, y1), text, fill='red', )
+            #
+            # cropped_image.show()
+
+    return {'products': products}
