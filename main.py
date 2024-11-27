@@ -4,7 +4,7 @@ from typing import List
 
 import easyocr
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from fastapi import FastAPI, responses, UploadFile
 from pydantic import BaseModel
 from ultralytics import YOLO
@@ -61,7 +61,7 @@ async def handle_receipt_detection(file: UploadFile):
     products: List[ProductItem] = list[ProductItem]()
 
     for result in results:
-        # result.show()
+        result.show()
 
         boxes = result.boxes.xyxy.cpu().numpy()
         labels = result.boxes.cls.cpu().numpy()
@@ -80,30 +80,30 @@ async def handle_receipt_detection(file: UploadFile):
             # cropped_image.show()
 
             np_cropped_image = np.array(cropped_image)
-            ocr_results = ocr.readtext(np_cropped_image, detail=0)
+            ocr_results = ocr.readtext(np_cropped_image, detail=1)
 
-            ocr_result = [text for text in ocr_results if len(text) > 0]
-            ocr_result_text: str = ' '.join(ocr_result)
+            # ocr_result = [text for text in ocr_results if len(text) > 0]
+            # ocr_result_text: str = ' '.join(ocr_result)
+            #
+            # products.append(
+            #     ProductItem(
+            #         name=ocr_result_text,
+            #         price="dummy",
+            #         amount=10,
+            #     )
+            # )
 
-            products.append(
-                ProductItem(
-                    name=ocr_result_text,
-                    price="dummy",
-                    amount=10,
-                )
-            )
+            #
+            for ocr_result_item in ocr_results:
+                bounding_box, text, confidence = ocr_result_item
 
-            #
-            # for ocr_result in ocr_results:
-            #     bounding_box, text, confidence = ocr_result
-            #
-            #     x1, y1 = map(int, bounding_box[0])
-            #     x2, y2 = map(int, bounding_box[2])
-            #
-            #     result_with_ocr = ImageDraw.Draw(cropped_image)
-            #     result_with_ocr.rectangle([x1, y1, x2, y2], outline='red', width=2)
-            #     result_with_ocr.text((x1, y1), text, fill='red', )
-            #
-            # cropped_image.show()
+                x1, y1 = map(int, bounding_box[0])
+                x2, y2 = map(int, bounding_box[2])
+
+                result_with_ocr = ImageDraw.Draw(cropped_image)
+                result_with_ocr.rectangle([x1, y1, x2, y2], outline='red', width=2)
+                result_with_ocr.text((x1, y1), text, fill='red', )
+
+            cropped_image.show()
 
     return {'products': products}
