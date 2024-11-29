@@ -11,26 +11,32 @@ from pydantic import BaseModel
 from ultralytics import YOLO
 import pickle
 
-from ml.product_classification import predict_classification
 from models.classification import PredictRequest
 
 app = FastAPI()
 
 trained_models_dir = os.path.join("trained_models")
 
-nlp_encoder = pickle.load(
-    open(os.path.join(trained_models_dir, "nlp", "encoder.pickle"), "rb")
-)
-nlp_vectorizer = pickle.load(
-    open(os.path.join(trained_models_dir, "nlp", "vectorizer.pickle"), "rb")
-)
-nlp_model = tf.keras.models.load_model(
-    os.path.join(trained_models_dir, "nlp", "model.keras")
-)
+
+# nlp_encoder = pickle.load(
+#     open(os.path.join(trained_models_dir, "nlp", "encoder.pickle"), "rb")
+# )
+# nlp_vectorizer = pickle.load(
+#     open(os.path.join(trained_models_dir, "nlp", "vectorizer.pickle"), "rb")
+# )
+# nlp_model = tf.keras.models.load_model(
+#     os.path.join(trained_models_dir, "nlp", "model.keras")
+# )
 object_detection_model = YOLO(
     os.path.join(trained_models_dir, "object_detection", "model.pt")
 )
 ocr = easyocr.Reader(["en", "id"])
+
+object_detection_labels = [
+    "product_item",
+    "product_item_discount",
+    "product_item_voucher",
+]
 
 
 @app.get("/")
@@ -54,8 +60,18 @@ async def handle_root():
     )
 
 
+class ProductItem(BaseModel):
+    name: str
+    amount: int
+    price: int
+    total_price: int
+    category: str
+    type: str
+
+
 @app.post(
     path="/v1/receipt",
+    responses={200: {"model": List[ProductItem]}},
 )
 async def handle_receipt_detection(file: UploadFile):
     image_content = await file.read()
@@ -63,15 +79,10 @@ async def handle_receipt_detection(file: UploadFile):
 
     results = object_detection_model.predict(source=receipt)
 
-    class ProductItem(BaseModel):
-        name: str
-        price: str
-        amount: int
-
-    products: List[ProductItem] = list[ProductItem]()
+    scanned_products: List[ProductItem] = list[ProductItem]()
 
     for result in results:
-        result.show()
+        # result.show()
 
         boxes = result.boxes.xyxy.cpu().numpy()
         labels = result.boxes.cls.cpu().numpy()
@@ -89,10 +100,91 @@ async def handle_receipt_detection(file: UploadFile):
                 )
             )
 
-            # cropped_image.show()
+            label_index = int(label)
 
-            np_cropped_image = np.array(cropped_image)
-            ocr_results = ocr.readtext(np_cropped_image, detail=1)
+            if label_index == 0:
+                # product item
+                width, height = cropped_image.size
+
+                # membagi gambar menjadi dua bagian, kiri dan kanan
+                # kiri untuk nama product
+                # kanan untuk jumlah dan harga
+                left_image = cropped_image.crop((0, 0, width // 2, height))
+                right_image = cropped_image.crop((width // 2, 0, width, height))
+
+                # mendapatkan nama product
+                product_name_ocr_results = ocr.readtext(np.array(left_image), detail=0)
+                product_name_result = "".join(product_name_ocr_results)
+
+                # mendapatkan jumlah dan harga
+                right_width, right_height = right_image.size
+                right_image_part1 = right_image.crop(
+                    (0, 0, right_width // 3, right_height)
+                )
+                right_image_part2 = right_image.crop(
+                    (right_width // 3, 0, 2 * right_width // 3, right_height)
+                )
+                right_image_part3 = right_image.crop(
+                    (2 * right_width // 3, 0, right_width, right_height)
+                )
+                product_amount_ocr_results = ocr.readtext(
+                    np.array(right_image_part1), detail=0
+                )
+                product_price_ocr_results = ocr.readtext(
+                    np.array(right_image_part2), detail=0
+                )
+                product_total_price_ocr_results = ocr.readtext(
+                    np.array(right_image_part3), detail=0
+                )
+
+                try:
+                    product_amount_result = int(
+                        "".join(
+                            filter(str.isdigit, "".join(product_amount_ocr_results))
+                        )
+                    )
+                except ValueError:
+                    product_amount_result = 0
+
+                try:
+                    product_price_result = int(
+                        "".join(filter(str.isdigit, "".join(product_price_ocr_results)))
+                    )
+                except ValueError:
+                    product_price_result = 0
+
+                try:
+                    product_total_price_result = int(
+                        "".join(
+                            filter(
+                                str.isdigit, "".join(product_total_price_ocr_results)
+                            )
+                        )
+                    )
+                except ValueError:
+                    product_total_price_result = 0
+
+                scanned_products.append(
+                    ProductItem(
+                        name=product_name_result,
+                        amount=product_amount_result,
+                        price=product_price_result,
+                        total_price=product_total_price_result,
+                        category="dummy_category",
+                        type=object_detection_labels[label_index],
+                    )
+                )
+
+            elif label_index == 1:
+                # product item discount
+                pass
+
+            else:
+                # product item voucher
+                pass
+
+            # np_cropped_image = np.array(cropped_image)
+            # ocr_results = ocr.readtext(np_cropped_image, detail=1)
 
             # ocr_result = [text for text in ocr_results if len(text) > 0]
             # ocr_result_text: str = ' '.join(ocr_result)
@@ -106,29 +198,28 @@ async def handle_receipt_detection(file: UploadFile):
             # )
 
             #
-            for ocr_result_item in ocr_results:
-                bounding_box, text, confidence = ocr_result_item
+            # for ocr_result_item in ocr_results:
+            #     bounding_box, text, confidence = ocr_result_item
 
-                x1, y1 = map(int, bounding_box[0])
-                x2, y2 = map(int, bounding_box[2])
+            #     x1, y1 = map(int, bounding_box[0])
+            #     x2, y2 = map(int, bounding_box[2])
 
-                result_with_ocr = ImageDraw.Draw(cropped_image)
-                result_with_ocr.rectangle([x1, y1, x2, y2], outline="red", width=2)
-                result_with_ocr.text(
-                    (x1, y1),
-                    text,
-                    fill="red",
-                )
+            #     result_with_ocr = ImageDraw.Draw(cropped_image)
+            #     result_with_ocr.rectangle([x1, y1, x2, y2], outline="red", width=2)
+            #     result_with_ocr.text(
+            #         (x1, y1),
+            #         text,
+            #         fill="red",
+            #     )
 
-            cropped_image.show()
+            # cropped_image.show()
 
-    return {"products": products}
+    return scanned_products
 
 
 @tf.keras.utils.register_keras_serializable()
 def standardize_product_name(product_name: str) -> tf.strings:
     product_name = tf.strings.lower(product_name)
-    # product_name = tf.strings.regex_replace(product_name, r'[^a-z\s]', '')
     product_name = tf.strings.regex_replace(
         product_name, r"\b\d+(\.\d+)?x\d+(\.\d+)?(g|ml|kg|lt)\b", ""
     )
