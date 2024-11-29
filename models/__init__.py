@@ -6,13 +6,18 @@ class HealthCheckResponse(BaseModel):
     status: str
 
 
+class ProductItemDetail(BaseModel):
+    type: str
+    category: str
+    category_probability: float
+
+
 class ProductItem(BaseModel):
     name: str
     amount: int
     price: int
     total_price: int
-    category: str
-    type: str
+    detail: ProductItemDetail
 
 
 class ScanReceiptResponse(BaseModel):

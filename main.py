@@ -1,38 +1,60 @@
 import io
 import os.path
-from typing import List
-
+import pickle
 import tensorflow as tf
 import easyocr
 import numpy as np
-from PIL import Image, ImageDraw
-from fastapi import FastAPI, responses, UploadFile
-from pydantic import BaseModel
-from ultralytics import YOLO
-import pickle
 
-from models import HealthCheckResponse, ProductItem, ScanReceiptResponse
-from models.classification import PredictRequest
+from typing import List
+from PIL import Image
+from fastapi import FastAPI, responses, UploadFile
+from ultralytics import YOLO
+from models import (
+    HealthCheckResponse,
+    ProductItemDetail,
+    ProductItem,
+    ScanReceiptResponse,
+)
+
+
+@tf.keras.utils.register_keras_serializable()
+def standardize_product_name(product_name: str) -> tf.strings:
+    product_name = tf.strings.lower(product_name)
+    product_name = tf.strings.regex_replace(
+        product_name, r"\b\d+(\.\d+)?x\d+(\.\d+)?(g|ml|kg|lt)\b", ""
+    )
+    product_name = tf.strings.regex_replace(
+        product_name, r"\b\d+(\.\d+)?(g|ml|kg|lt)\b", ""
+    )
+    product_name = tf.strings.regex_replace(product_name, r"\b\d+(g|ml|kg|lt)\b", "")
+    product_name = tf.strings.regex_replace(product_name, r"\b\d+\'s\b", "")
+    product_name = tf.strings.regex_replace(product_name, r"[^a-z\s]", "")
+    product_name = tf.strings.regex_replace(product_name, r"\s{2,}", " ")
+    product_name = tf.strings.strip(product_name)
+
+    return product_name
+
 
 app = FastAPI()
 
 trained_models_dir = os.path.join("trained_models")
 
 
-# nlp_encoder = pickle.load(
-#     open(os.path.join(trained_models_dir, "nlp", "encoder.pickle"), "rb")
-# )
-# nlp_vectorizer = pickle.load(
-#     open(os.path.join(trained_models_dir, "nlp", "vectorizer.pickle"), "rb")
-# )
-# nlp_model = tf.keras.models.load_model(
-#     os.path.join(trained_models_dir, "nlp", "model.keras")
-# )
+nlp_encoder = pickle.load(
+    open(os.path.join(trained_models_dir, "nlp", "encoder.pkl"), "rb")
+)
+nlp_vectorizer = pickle.load(
+    open(os.path.join(trained_models_dir, "nlp", "vectorizer.pkl"), "rb")
+)
+nlp_model = tf.keras.models.load_model(
+    os.path.join(trained_models_dir, "nlp", "model.keras")
+)
 object_detection_model = YOLO(
     os.path.join(trained_models_dir, "object_detection", "model.pt")
 )
 ocr = easyocr.Reader(["en", "id"])
 
+nlp_labels = []
 object_detection_labels = [
     "product_item",
     "product_item_discount",
@@ -116,6 +138,23 @@ async def handle_receipt_detection(file: UploadFile):
                 product_name_ocr_results = ocr.readtext(np.array(left_image), detail=0)
                 product_name_result = "".join(product_name_ocr_results)
 
+                # mendapatkan prediksi kategori yang sesuai
+                standardized_product_name = standardize_product_name(
+                    product_name_result
+                )
+                vectorized_product_name = nlp_vectorizer([standardized_product_name])
+
+                nlp_prediction = nlp_model.predict(vectorized_product_name)
+                nlp_predicted_index = np.argmax(nlp_prediction)
+                nlp_max_probability = nlp_prediction[0][nlp_predicted_index]
+
+                if nlp_max_probability < 0.8:
+                    nlp_predicted_label = "others"
+                else:
+                    nlp_predicted_label = nlp_encoder.get_vocabulary()[
+                        nlp_predicted_index
+                    ]
+
                 # mendapatkan jumlah dan harga
                 right_width, right_height = right_image.size
                 right_image_part1 = right_image.crop(
@@ -170,8 +209,11 @@ async def handle_receipt_detection(file: UploadFile):
                         amount=product_amount_result,
                         price=product_price_result,
                         total_price=product_total_price_result,
-                        category="dummy_category",
-                        type=object_detection_labels[label_index],
+                        detail=ProductItemDetail(
+                            type=object_detection_labels[label_index],
+                            category=nlp_predicted_label,
+                            category_probability=nlp_max_probability,
+                        ),
                     )
                 )
 
@@ -217,19 +259,3 @@ async def handle_receipt_detection(file: UploadFile):
     return ScanReceiptResponse(
         products=scanned_products,
     )
-
-
-@tf.keras.utils.register_keras_serializable()
-def standardize_product_name(product_name: str) -> tf.strings:
-    product_name = tf.strings.lower(product_name)
-    product_name = tf.strings.regex_replace(
-        product_name, r"\b\d+(\.\d+)?x\d+(\.\d+)?(g|ml|kg|lt)\b", ""
-    )
-    product_name = tf.strings.regex_replace(
-        product_name, r"\b\d+(\.\d+)?(g|ml|kg|lt)\b", ""
-    )
-    product_name = tf.strings.regex_replace(product_name, r"\b\d+(g|ml|kg|lt)\b", "")
-    product_name = tf.strings.regex_replace(product_name, r"\b\d+\'s\b", "")
-    product_name = tf.strings.regex_replace(product_name, r"[^a-z\s]", "")
-    product_name = tf.strings.strip(product_name)
-    return product_name
