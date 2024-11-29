@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from ultralytics import YOLO
 import pickle
 
+from models import HealthCheckResponse, ProductItem, ScanReceiptResponse
 from models.classification import PredictRequest
 
 app = FastAPI()
@@ -60,10 +61,6 @@ async def handle_root():
     )
 
 
-class HealthCheckResponse(BaseModel):
-    status: str
-
-
 @app.get(
     path="/health",
     responses={200: {"model": HealthCheckResponse}},
@@ -72,18 +69,9 @@ async def handle_health_check():
     return HealthCheckResponse(status="healthy")
 
 
-class ProductItem(BaseModel):
-    name: str
-    amount: int
-    price: int
-    total_price: int
-    category: str
-    type: str
-
-
 @app.post(
     path="/v1/receipt",
-    responses={200: {"model": List[ProductItem]}},
+    responses={200: {"model": ScanReceiptResponse}},
 )
 async def handle_receipt_detection(file: UploadFile):
     image_content = await file.read()
@@ -226,7 +214,9 @@ async def handle_receipt_detection(file: UploadFile):
 
             # cropped_image.show()
 
-    return scanned_products
+    return ScanReceiptResponse(
+        products=scanned_products,
+    )
 
 
 @tf.keras.utils.register_keras_serializable()
