@@ -60,6 +60,18 @@ async def handle_root():
     )
 
 
+class HealthCheckResponse(BaseModel):
+    status: str
+
+
+@app.get(
+    path="/health",
+    responses={200: {"model": HealthCheckResponse}},
+)
+async def handle_health_check():
+    return HealthCheckResponse(status="healthy")
+
+
 class ProductItem(BaseModel):
     name: str
     amount: int
