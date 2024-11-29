@@ -149,7 +149,7 @@ async def handle_receipt_detection(file: UploadFile):
                 nlp_max_probability = nlp_prediction[0][nlp_predicted_index]
 
                 if nlp_max_probability < 0.8:
-                    nlp_predicted_label = "others"
+                    nlp_predicted_label = "lainnya"
                 else:
                     nlp_predicted_label = nlp_encoder.get_vocabulary()[
                         nlp_predicted_index
