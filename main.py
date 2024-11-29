@@ -2,26 +2,39 @@ import io
 import os.path
 from typing import List
 
+import tensorflow as tf
 import easyocr
 import numpy as np
 from PIL import Image, ImageDraw
 from fastapi import FastAPI, responses, UploadFile
 from pydantic import BaseModel
 from ultralytics import YOLO
+import pickle
 
 from ml.product_classification import predict_classification
 from models.classification import PredictRequest
 
 app = FastAPI()
 
-ml_models_dir = os.path.join('ml_models')
+trained_models_dir = os.path.join("trained_models")
 
-product_detection_model = YOLO(os.path.join(ml_models_dir, 'object_detection', 'model.pt'))
-ocr = easyocr.Reader(['en', 'id'])
+nlp_encoder = pickle.load(
+    open(os.path.join(trained_models_dir, "nlp", "encoder.pickle"), "rb")
+)
+nlp_vectorizer = pickle.load(
+    open(os.path.join(trained_models_dir, "nlp", "vectorizer.pickle"), "rb")
+)
+nlp_model = tf.keras.models.load_model(
+    os.path.join(trained_models_dir, "nlp", "model.keras")
+)
+object_detection_model = YOLO(
+    os.path.join(trained_models_dir, "object_detection", "model.pt")
+)
+ocr = easyocr.Reader(["en", "id"])
 
 
 @app.get("/")
-async def root():
+async def handle_root():
     """
     Root endpoint that returns a simple HTML page with a welcome message.
     """
@@ -41,17 +54,14 @@ async def root():
     )
 
 
-@app.post("/predict")
-async def handle_post_predict(request: PredictRequest):
-    return predict_classification(request.product_names)
-
-
-@app.post("/receipt")
+@app.post(
+    path="/v1/receipt",
+)
 async def handle_receipt_detection(file: UploadFile):
     image_content = await file.read()
     receipt = Image.open(io.BytesIO(image_content))
 
-    results = product_detection_model.predict(source=receipt)
+    results = object_detection_model.predict(source=receipt)
 
     class ProductItem(BaseModel):
         name: str
@@ -70,12 +80,14 @@ async def handle_receipt_detection(file: UploadFile):
             tolerance = 10
             x1, y1, x2, y2 = box.astype(int)
 
-            cropped_image = receipt.crop((
-                x1 - tolerance,
-                y1 - tolerance,
-                x2 + tolerance,
-                y2 + tolerance,
-            ))
+            cropped_image = receipt.crop(
+                (
+                    x1 - tolerance,
+                    y1 - tolerance,
+                    x2 + tolerance,
+                    y2 + tolerance,
+                )
+            )
 
             # cropped_image.show()
 
@@ -101,9 +113,13 @@ async def handle_receipt_detection(file: UploadFile):
                 x2, y2 = map(int, bounding_box[2])
 
                 result_with_ocr = ImageDraw.Draw(cropped_image)
-                result_with_ocr.rectangle([x1, y1, x2, y2], outline='red', width=2)
-                result_with_ocr.text((x1, y1), text, fill='red', )
+                result_with_ocr.rectangle([x1, y1, x2, y2], outline="red", width=2)
+                result_with_ocr.text(
+                    (x1, y1),
+                    text,
+                    fill="red",
+                )
 
             cropped_image.show()
 
-    return {'products': products}
+    return {"products": products}
