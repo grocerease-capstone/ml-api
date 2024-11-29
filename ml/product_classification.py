@@ -36,11 +36,3 @@ def predict_classification(
         )
 
     return result
-
-
-@tf.keras.utils.register_keras_serializable()
-def standardize_product_name(product_name: str) -> tf.strings:
-    product_name = tf.strings.lower(product_name)
-    # product_name = tf.strings.regex_replace(product_name, r'\d+([xgmlkgcm]*)', '')
-
-    return product_name
