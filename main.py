@@ -50,21 +50,6 @@ object_detection_labels = [
 ml_models = {}
 
 
-# nlp_encoder = pickle.load(
-#     open(os.path.join(trained_models_dir, "nlp", "v2", "encoder.pickle"), "rb")
-# )
-# nlp_vectorizer = pickle.load(
-#     open(os.path.join(trained_models_dir, "nlp", "v2", "vectorizer.pickle"), "rb")
-# )
-# nlp_model = tf.keras.models.load_model(
-#     os.path.join(trained_models_dir, "nlp", "v2", "model.keras")
-# )
-# object_detection_model = YOLO(
-#     os.path.join(trained_models_dir, "object_detection", "model.pt")
-# )
-# ocr = easyocr.Reader(["en", "id"])
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # load all ml models
