@@ -1,9 +1,9 @@
 import io
-import os.path
-import pickle
 import tensorflow as tf
-import easyocr
 import numpy as np
+import os
+import pickle
+import easyocr
 
 from contextlib import asynccontextmanager
 from typing import List
@@ -16,32 +16,9 @@ from models import (
     ProductItem,
     ScanReceiptResponse,
 )
+from utils import standardize_product_name
 
 
-@tf.keras.utils.register_keras_serializable()
-def standardize_product_name(product_name: str) -> tf.strings:
-    product_name = tf.strings.lower(product_name)
-    product_name = tf.strings.regex_replace(
-        product_name, r"\b\d+(\.\d+)?x\d+(\.\d+)?(g|ml|kg|lt)\b", ""
-    )
-    product_name = tf.strings.regex_replace(
-        product_name, r"\b\d+(\.\d+)?(g|ml|kg|lt)\b", ""
-    )
-    product_name = tf.strings.regex_replace(product_name, r"\b\d+(g|ml|kg|lt)\b", "")
-    product_name = tf.strings.regex_replace(product_name, r"\b\d+\'s\b", "")
-    product_name = tf.strings.regex_replace(product_name, r"[^a-z\s]", "")
-    product_name = tf.strings.regex_replace(product_name, r"\s{2,}", " ")
-    product_name = tf.strings.strip(product_name)
-
-    return product_name
-
-
-tf.keras.utils.get_custom_objects()[
-    "standardize_product_name"
-] = standardize_product_name
-
-
-trained_models_dir = os.path.join("trained_models")
 object_detection_labels = [
     "product_item",
     "product_item_discount",
@@ -52,7 +29,12 @@ ml_models = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    tf.keras.utils.get_custom_objects()[
+        "standardize_product_name"
+    ] = standardize_product_name
+
     # load all ml models
+    trained_models_dir = os.path.join("trained_models")
     ml_models["nlp_encoder"] = pickle.load(
         open(os.path.join(trained_models_dir, "nlp", "v2", "encoder.pickle"), "rb")
     )
