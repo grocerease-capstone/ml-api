@@ -35,19 +35,23 @@ def standardize_product_name(product_name: str) -> tf.strings:
     return product_name
 
 
+tf.keras.utils.get_custom_objects()[
+    "standardize_product_name"
+] = standardize_product_name
+
 app = FastAPI()
 
 trained_models_dir = os.path.join("trained_models")
 
 
 nlp_encoder = pickle.load(
-    open(os.path.join(trained_models_dir, "nlp", "encoder.pkl"), "rb")
+    open(os.path.join(trained_models_dir, "nlp", "v2", "encoder.pickle"), "rb")
 )
 nlp_vectorizer = pickle.load(
-    open(os.path.join(trained_models_dir, "nlp", "vectorizer.pkl"), "rb")
+    open(os.path.join(trained_models_dir, "nlp", "v2", "vectorizer.pickle"), "rb")
 )
 nlp_model = tf.keras.models.load_model(
-    os.path.join(trained_models_dir, "nlp", "model.keras")
+    os.path.join(trained_models_dir, "nlp", "v2", "model.keras")
 )
 object_detection_model = YOLO(
     os.path.join(trained_models_dir, "object_detection", "model.pt")
