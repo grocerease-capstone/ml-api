@@ -1,10 +1,11 @@
 import io
-import os.path
-import pickle
 import tensorflow as tf
-import easyocr
 import numpy as np
+import os
+import pickle
+import easyocr
 
+from contextlib import asynccontextmanager
 from typing import List
 from PIL import Image
 from fastapi import FastAPI, responses, UploadFile
@@ -15,51 +16,46 @@ from models import (
     ProductItem,
     ScanReceiptResponse,
 )
+from utils import standardize_product_name
 
 
-@tf.keras.utils.register_keras_serializable()
-def standardize_product_name(product_name: str) -> tf.strings:
-    product_name = tf.strings.lower(product_name)
-    product_name = tf.strings.regex_replace(
-        product_name, r"\b\d+(\.\d+)?x\d+(\.\d+)?(g|ml|kg|lt)\b", ""
-    )
-    product_name = tf.strings.regex_replace(
-        product_name, r"\b\d+(\.\d+)?(g|ml|kg|lt)\b", ""
-    )
-    product_name = tf.strings.regex_replace(product_name, r"\b\d+(g|ml|kg|lt)\b", "")
-    product_name = tf.strings.regex_replace(product_name, r"\b\d+\'s\b", "")
-    product_name = tf.strings.regex_replace(product_name, r"[^a-z\s]", "")
-    product_name = tf.strings.regex_replace(product_name, r"\s{2,}", " ")
-    product_name = tf.strings.strip(product_name)
-
-    return product_name
-
-
-app = FastAPI()
-
-trained_models_dir = os.path.join("trained_models")
-
-
-nlp_encoder = pickle.load(
-    open(os.path.join(trained_models_dir, "nlp", "encoder.pkl"), "rb")
-)
-nlp_vectorizer = pickle.load(
-    open(os.path.join(trained_models_dir, "nlp", "vectorizer.pkl"), "rb")
-)
-nlp_model = tf.keras.models.load_model(
-    os.path.join(trained_models_dir, "nlp", "model.keras")
-)
-object_detection_model = YOLO(
-    os.path.join(trained_models_dir, "object_detection", "model.pt")
-)
-ocr = easyocr.Reader(["en", "id"])
-
-nlp_labels = []
 object_detection_labels = [
     "product_item",
     "product_item_discount",
     "product_item_voucher",
 ]
+ml_models = {}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    tf.keras.utils.get_custom_objects()[
+        "standardize_product_name"
+    ] = standardize_product_name
+
+    # load all ml models
+    trained_models_dir = os.path.join("trained_models")
+    ml_models["nlp_encoder"] = pickle.load(
+        open(os.path.join(trained_models_dir, "nlp", "v2", "encoder.pickle"), "rb")
+    )
+    ml_models["nlp_vectorizer"] = pickle.load(
+        open(os.path.join(trained_models_dir, "nlp", "v2", "vectorizer.pickle"), "rb")
+    )
+    ml_models["nlp_model"] = tf.keras.models.load_model(
+        os.path.join(trained_models_dir, "nlp", "v2", "model.keras")
+    )
+    ml_models["object_detection_model"] = YOLO(
+        os.path.join(trained_models_dir, "object_detection", "model.pt")
+    )
+    ml_models["ocr"] = easyocr.Reader(["en", "id"])
+
+    yield
+
+    # clean up ml models
+    ml_models.clear()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
@@ -99,7 +95,7 @@ async def handle_receipt_detection(file: UploadFile):
     image_content = await file.read()
     receipt = Image.open(io.BytesIO(image_content))
 
-    results = object_detection_model.predict(source=receipt)
+    results = ml_models["object_detection_model"].predict(source=receipt)
 
     scanned_products: List[ProductItem] = list[ProductItem]()
 
@@ -135,23 +131,27 @@ async def handle_receipt_detection(file: UploadFile):
                 right_image = cropped_image.crop((width // 2, 0, width, height))
 
                 # mendapatkan nama product
-                product_name_ocr_results = ocr.readtext(np.array(left_image), detail=0)
+                product_name_ocr_results = ml_models["ocr"].readtext(
+                    np.array(left_image), detail=0
+                )
                 product_name_result = "".join(product_name_ocr_results)
 
                 # mendapatkan prediksi kategori yang sesuai
                 standardized_product_name = standardize_product_name(
                     product_name_result
                 )
-                vectorized_product_name = nlp_vectorizer([standardized_product_name])
+                vectorized_product_name = ml_models["nlp_vectorizer"](
+                    [standardized_product_name]
+                )
 
-                nlp_prediction = nlp_model.predict(vectorized_product_name)
+                nlp_prediction = ml_models["nlp_model"].predict(vectorized_product_name)
                 nlp_predicted_index = np.argmax(nlp_prediction)
                 nlp_max_probability = nlp_prediction[0][nlp_predicted_index]
 
                 if nlp_max_probability < 0.8:
                     nlp_predicted_label = "lainnya"
                 else:
-                    nlp_predicted_label = nlp_encoder.get_vocabulary()[
+                    nlp_predicted_label = ml_models["nlp_encoder"].get_vocabulary()[
                         nlp_predicted_index
                     ]
 
@@ -166,13 +166,13 @@ async def handle_receipt_detection(file: UploadFile):
                 right_image_part3 = right_image.crop(
                     (2 * right_width // 3, 0, right_width, right_height)
                 )
-                product_amount_ocr_results = ocr.readtext(
+                product_amount_ocr_results = ml_models["ocr"].readtext(
                     np.array(right_image_part1), detail=0
                 )
-                product_price_ocr_results = ocr.readtext(
+                product_price_ocr_results = ml_models["ocr"].readtext(
                     np.array(right_image_part2), detail=0
                 )
-                product_total_price_ocr_results = ocr.readtext(
+                product_total_price_ocr_results = ml_models["ocr"].readtext(
                     np.array(right_image_part3), detail=0
                 )
 
