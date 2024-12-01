@@ -134,7 +134,7 @@ async def handle_receipt_detection(file: UploadFile):
                 product_name_ocr_results = ml_models["ocr"].readtext(
                     np.array(left_image), detail=0
                 )
-                product_name_result = "".join(product_name_ocr_results)
+                product_name_result = " ".join(product_name_ocr_results)
 
                 # mendapatkan prediksi kategori yang sesuai
                 standardized_product_name = standardize_product_name(
@@ -226,10 +226,10 @@ async def handle_receipt_detection(file: UploadFile):
                 pass
 
             # np_cropped_image = np.array(cropped_image)
-            # ocr_results = ocr.readtext(np_cropped_image, detail=1)
+            # ocr_results = ml_models["ocr"].readtext(np_cropped_image, detail=1)
 
             # ocr_result = [text for text in ocr_results if len(text) > 0]
-            # ocr_result_text: str = ' '.join(ocr_result)
+            # ocr_result_text: str = " ".join(ocr_result)
             #
             # products.append(
             #     ProductItem(
