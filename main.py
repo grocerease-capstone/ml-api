@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
         os.path.join(trained_models_dir, "nlp", "v2", "model.keras")
     )
     ml_models["object_detection_model"] = YOLO(
-        os.path.join(trained_models_dir, "object_detection", "model.pt")
+        os.path.join(trained_models_dir, "object_detection", "v2", "model.pt")
     )
     ml_models["ocr"] = easyocr.Reader(["en", "id"])
 
