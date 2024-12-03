@@ -87,6 +87,14 @@ async def handle_health_check():
     return HealthCheckResponse(status="healthy")
 
 
+@app.get(
+    path="/v1/categories",
+    responses={200: {"model": List[str]}},
+)
+async def handle_get_all_categories():
+    return ml_models["nlp_encoder"].get_vocabulary()
+
+
 @app.post(
     path="/v1/receipt",
     responses={200: {"model": ScanReceiptResponse}},
