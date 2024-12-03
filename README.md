@@ -11,10 +11,10 @@ Informasi lanjutan:
 
 ### Product Item Labels
 
-- 0: home living
-- 1: minuman
-- 2: product-segar
-- 3: kecantikan
-- 4: kesehatan
-- 5: makanan
+- 0: makanan
+- 1: kecantikan
+- 2: home-living
+- 3: minuman
+- 4: product-segar
+- 5: kesehatan
 - 6: lainnya (jika prediksi < threshold)
