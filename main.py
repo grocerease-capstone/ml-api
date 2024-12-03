@@ -106,7 +106,7 @@ async def handle_receipt_detection(file: UploadFile):
         labels = result.boxes.cls.cpu().numpy()
 
         for idx, (box, label) in enumerate(zip(boxes, labels)):
-            tolerance = 10
+            tolerance = 0
             x1, y1, x2, y2 = box.astype(int)
 
             cropped_image = receipt.crop(
@@ -127,12 +127,20 @@ async def handle_receipt_detection(file: UploadFile):
                 # membagi gambar menjadi dua bagian, kiri dan kanan
                 # kiri untuk nama product
                 # kanan untuk jumlah dan harga
-                left_image = cropped_image.crop((0, 0, width // 2, height))
-                right_image = cropped_image.crop((width // 2, 0, width, height))
+                # left_image = cropped_image.crop((0, 0, width // 2, height))
+                # right_image = cropped_image.crop((width // 2, 0, width, height))
+
+                max_char_count = 42
+
+                # mendapatkan nama product
+                product_name_image = cropped_image.crop(
+                    (0, 0, (21 / max_char_count) * width, height)
+                )
+                # product_name_image.show()
 
                 # mendapatkan nama product
                 product_name_ocr_results = ml_models["ocr"].readtext(
-                    np.array(left_image), detail=0
+                    np.array(product_name_image), detail=0
                 )
                 product_name_result = " ".join(product_name_ocr_results)
 
@@ -155,27 +163,20 @@ async def handle_receipt_detection(file: UploadFile):
                         nlp_predicted_index
                     ]
 
-                # mendapatkan jumlah dan harga
-                right_width, right_height = right_image.size
-                right_image_part1 = right_image.crop(
-                    (0, 0, right_width // 3, right_height)
+                # mendapatkan jumlah product
+                product_amount_image = cropped_image.crop(
+                    (
+                        (20 / max_char_count) * width,
+                        0,
+                        (26 / max_char_count) * width,
+                        height,
+                    )
                 )
-                right_image_part2 = right_image.crop(
-                    (right_width // 3, 0, 2 * right_width // 3, right_height)
-                )
-                right_image_part3 = right_image.crop(
-                    (2 * right_width // 3, 0, right_width, right_height)
-                )
-                product_amount_ocr_results = ml_models["ocr"].readtext(
-                    np.array(right_image_part1), detail=0
-                )
-                product_price_ocr_results = ml_models["ocr"].readtext(
-                    np.array(right_image_part2), detail=0
-                )
-                product_total_price_ocr_results = ml_models["ocr"].readtext(
-                    np.array(right_image_part3), detail=0
-                )
+                # product_amount_image.show()
 
+                product_amount_ocr_results = ml_models["ocr"].readtext(
+                    np.array(product_amount_image), detail=0
+                )
                 try:
                     product_amount_result = int(
                         "".join(
@@ -185,6 +186,20 @@ async def handle_receipt_detection(file: UploadFile):
                 except ValueError:
                     product_amount_result = 0
 
+                # mendapatkan harga satuan
+                product_price_image = cropped_image.crop(
+                    (
+                        (25 / max_char_count) * width,
+                        0,
+                        (33 / max_char_count) * width,
+                        height,
+                    )
+                )
+                # product_price_image.show()
+
+                product_price_ocr_results = ml_models["ocr"].readtext(
+                    np.array(product_price_image), detail=0
+                )
                 try:
                     product_price_result = int(
                         "".join(filter(str.isdigit, "".join(product_price_ocr_results)))
@@ -192,6 +207,20 @@ async def handle_receipt_detection(file: UploadFile):
                 except ValueError:
                     product_price_result = 0
 
+                # mendapatkan harga total
+                product_total_price_image = cropped_image.crop(
+                    (
+                        (32 / max_char_count) * width,
+                        0,
+                        width,
+                        height,
+                    )
+                )
+                # product_total_price_image.show()
+
+                product_total_price_ocr_results = ml_models["ocr"].readtext(
+                    np.array(product_total_price_image), detail=0
+                )
                 try:
                     product_total_price_result = int(
                         "".join(
@@ -202,6 +231,28 @@ async def handle_receipt_detection(file: UploadFile):
                     )
                 except ValueError:
                     product_total_price_result = 0
+
+                # mendapatkan jumlah dan harga
+                # right_width, right_height = right_image.size
+                # right_image_part1 = right_image.crop(
+                #     (0, 0, right_width // 3, right_height)
+                # )
+                # right_image_part2 = right_image.crop(
+                #     (right_width // 3, 0, 2 * right_width // 3, right_height)
+                # )
+                # right_image_part3 = right_image.crop(
+                #     (2 * right_width // 3, 0, right_width, right_height)
+                # )
+
+                # mendapatkan jumlah product jika terjadi error (jumlah product tidak terdeteksi)
+                if product_amount_result == 0:
+                    if (
+                        product_price_result > 0
+                        and product_total_price_result >= product_price_result
+                    ):
+                        product_amount_result = (
+                            product_total_price_result // product_price_result
+                        )
 
                 scanned_products.append(
                     ProductItem(
