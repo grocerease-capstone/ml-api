@@ -108,12 +108,18 @@ async def handle_receipt_detection(file: UploadFile):
     scanned_products: List[ProductItem] = list[ProductItem]()
 
     for result in results:
-        # result.show()
+        result.show()
 
         boxes = result.boxes.xyxy.cpu().numpy()
         labels = result.boxes.cls.cpu().numpy()
+        confidences = result.boxes.conf.cpu().numpy()
 
-        for idx, (box, label) in enumerate(zip(boxes, labels)):
+        print(confidences)
+
+        for _, (box, label, confidence) in enumerate(zip(boxes, labels, confidences)):
+            if confidence < 0.6:
+                continue
+
             tolerance = 0
             x1, y1, x2, y2 = box.astype(int)
 
@@ -275,6 +281,7 @@ async def handle_receipt_detection(file: UploadFile):
                             ),
                             category_probability=nlp_max_probability,
                         ),
+                        probability=confidence,
                     )
                 )
 

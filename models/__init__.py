@@ -18,6 +18,7 @@ class ProductItem(BaseModel):
     price: int
     total_price: int
     detail: ProductItemDetail
+    probability: float
 
 
 class ScanReceiptResponse(BaseModel):
