@@ -109,7 +109,7 @@ async def handle_receipt_detection(file: UploadFile):
     scanned_products: List[ProductItem] = list[ProductItem]()
 
     for result in results:
-        result.show()
+        # result.show()
 
         boxes = result.boxes.xyxy.cpu().numpy()
         labels = result.boxes.cls.cpu().numpy()
