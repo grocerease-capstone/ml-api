@@ -156,12 +156,12 @@ async def handle_receipt_detection(file: UploadFile):
                 nlp_predicted_index = np.argmax(nlp_prediction)
                 nlp_max_probability = nlp_prediction[0][nlp_predicted_index]
 
-                if nlp_max_probability < 0.8:
-                    nlp_predicted_label = "lainnya"
-                else:
-                    nlp_predicted_label = ml_models["nlp_encoder"].get_vocabulary()[
-                        nlp_predicted_index
-                    ]
+                # if nlp_max_probability < 0.8:
+                #     nlp_predicted_label = "lainnya"
+                # else:
+                #     nlp_predicted_label = ml_models["nlp_encoder"].get_vocabulary()[
+                #         nlp_predicted_index
+                #     ]
 
                 # mendapatkan jumlah product
                 product_amount_image = cropped_image.crop(
@@ -262,7 +262,9 @@ async def handle_receipt_detection(file: UploadFile):
                         total_price=product_total_price_result,
                         detail=ProductItemDetail(
                             type=object_detection_labels[label_index],
-                            category_index=nlp_predicted_label,
+                            category_index=(
+                                nlp_predicted_index if nlp_max_probability >= 0.8 else 6
+                            ),
                             category_probability=nlp_max_probability,
                         ),
                     )
