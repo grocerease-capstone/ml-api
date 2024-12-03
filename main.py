@@ -18,7 +18,8 @@ from models import (
 )
 from utils import standardize_product_name
 
-
+OBJECT_DETECTION_PRODUCT_ITEM_THRESHOLD = 0.6
+OBJECT_DETECTION_PRODUCT_ITEM_CATEGORY_THRESHOLD = 0.8
 object_detection_labels = [
     "product_item",
     "product_item_discount",
@@ -114,10 +115,8 @@ async def handle_receipt_detection(file: UploadFile):
         labels = result.boxes.cls.cpu().numpy()
         confidences = result.boxes.conf.cpu().numpy()
 
-        print(confidences)
-
         for _, (box, label, confidence) in enumerate(zip(boxes, labels, confidences)):
-            if confidence < 0.6:
+            if confidence < OBJECT_DETECTION_PRODUCT_ITEM_THRESHOLD:
                 continue
 
             tolerance = 0
@@ -277,7 +276,10 @@ async def handle_receipt_detection(file: UploadFile):
                         detail=ProductItemDetail(
                             type=object_detection_labels[label_index],
                             category_index=(
-                                nlp_predicted_index if nlp_max_probability >= 0.8 else 6
+                                nlp_predicted_index
+                                if nlp_max_probability
+                                >= OBJECT_DETECTION_PRODUCT_ITEM_CATEGORY_THRESHOLD
+                                else 6
                             ),
                             category_probability=nlp_max_probability,
                         ),
