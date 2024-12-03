@@ -262,7 +262,7 @@ async def handle_receipt_detection(file: UploadFile):
                         total_price=product_total_price_result,
                         detail=ProductItemDetail(
                             type=object_detection_labels[label_index],
-                            category=nlp_predicted_label,
+                            category_index=nlp_predicted_label,
                             category_probability=nlp_max_probability,
                         ),
                     )

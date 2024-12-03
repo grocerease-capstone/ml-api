@@ -8,7 +8,7 @@ class HealthCheckResponse(BaseModel):
 
 class ProductItemDetail(BaseModel):
     type: str
-    category: str
+    category_index: int
     category_probability: float
 
 
